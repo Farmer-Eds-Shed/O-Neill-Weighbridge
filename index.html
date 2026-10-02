@@ -49,12 +49,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #e5e7eb}
 th{color:#4b5563}
 .right{text-align:right}
+.remove-weight{padding:6px 9px;font-size:12px;background:#fee2e2;color:#991b1b}
 .empty{text-align:center;color:var(--muted);padding:16px}
-.dev{margin-top:16px;background:#f9fafb;border:1px dashed #d1d5db;border-radius:7px;padding:10px}
-.dev summary{cursor:pointer;font-size:13px;font-weight:700}
-.dev-controls{display:grid;grid-template-columns:1fr auto auto;gap:7px;margin-top:10px}
-.dev input{padding:9px}
-.dev button{padding:9px 12px}
 .footer{text-align:center;color:var(--muted);font-size:12px;margin-top:14px}
 @media(max-width:600px){
   .grid,.weights{grid-template-columns:1fr}
@@ -84,9 +80,11 @@ th{color:#4b5563}
 
     <div class="grid">
       <div class="field">
-        <label for="registration">Vehicle / registration</label>
-        <input id="registration" list="vehicleList" placeholder="e.g. 231-MH-1234" autocomplete="off">
-        <datalist id="vehicleList"></datalist>
+        <label for="vehicleSelect">Vehicle</label>
+        <select id="vehicleSelect">
+          <option value="">Enter new vehicle…</option>
+        </select>
+        <input id="registration" placeholder="Registration / vehicle name" autocomplete="off" style="margin-top:7px">
         <div id="vehicleHint" style="font-size:12px;color:var(--muted);margin-top:5px"></div>
       </div>
       <div class="field">
@@ -102,11 +100,11 @@ th{color:#4b5563}
 
     <div class="weights">
       <div class="box">
-        <small>Tare weight</small>
+        <small>Tare</small>
         <strong><span id="tare">7,840</span> kg</strong>
       </div>
       <div class="box net">
-        <small>Net weight</small>
+        <small>Net</small>
         <strong><span id="net">10,580</span> kg</strong>
       </div>
     </div>
@@ -114,7 +112,7 @@ th{color:#4b5563}
     <button class="primary" id="capture">CAPTURE WEIGHT</button>
 
     <div class="actions">
-      <button class="secondary" id="setFirst">Tare</button>
+      <button class="secondary" id="setFirst">TARE</button>
       <button class="secondary" id="clear">NEW LOAD</button>
     </div>
 
@@ -122,8 +120,8 @@ th{color:#4b5563}
 
     <div class="section">
       <div class="top">
-        <h2 style="margin:0">Saved tractors / vehicles</h2>
-        <button class="secondary" id="saveVehicle" style="padding:8px 11px">SAVE CURRENT TARE</button>
+        <h2 style="margin:0">Saved vehicles</h2>
+        <button class="secondary" id="saveVehicle" style="padding:8px 11px">SAVE TARE</button>
       </div>
       <div id="vehicles" style="margin-top:8px"></div>
     </div>
@@ -132,15 +130,6 @@ th{color:#4b5563}
       <h2>Recent weighings</h2>
       <div id="history"></div>
     </div>
-
-    <details class="dev">
-      <summary>Demo / test controls</summary>
-      <div class="dev-controls">
-        <input id="demoWeight" type="number" step="0.1" value="18420">
-        <button class="secondary" id="applyWeight">SET WEIGHT</button>
-        <button class="secondary" id="toggleStable">SET UNSTABLE</button>
-      </div>
-    </details>
 
     <div class="footer">Prototype single-page app · data stored locally in this browser</div>
   </div>
@@ -155,7 +144,7 @@ const ONEILL_WEIGHT  = "a5b10002-7c4d-4e8a-9f21-0e1a2b3c4d5e";
 let bleDevice = null;
 let weightCharacteristic = null;
 let liveWeight = null;
-let firstWeight = 7840;
+let firstWeight = null;
 let stable = false;
 let lastReadingAt = 0;
 let history = JSON.parse(localStorage.getItem("oneill-weighings") || "[]");
@@ -196,10 +185,15 @@ function render(){
 
   $("capture").disabled = !stable || liveWeight == null;
 
-  // Saved vehicle / tractor list
-  $("vehicleList").innerHTML = vehicles.map(v =>
-    `<option value="${esc(v.reg)}">${fmt(v.tare)} kg tare</option>`
-  ).join("");
+  // Native select works reliably on mobile.
+  const currentSelection = $("vehicleSelect").value;
+  $("vehicleSelect").innerHTML =
+    '<option value="">Enter new vehicle…</option>' +
+    vehicles.map(v =>
+      `<option value="${esc(v.reg)}">${esc(v.reg)} — ${fmt(v.tare)} kg</option>`
+    ).join("");
+  if(vehicles.some(v => v.reg === currentSelection))
+    $("vehicleSelect").value = currentSelection;
 
   if(!vehicles.length){
     $("vehicles").innerHTML='<div class="empty">No saved vehicles yet.</div>';
@@ -217,12 +211,13 @@ function render(){
     $("history").innerHTML='<div class="empty">No weighings captured yet.</div>';
   } else {
     $("history").innerHTML=`<table>
-      <thead><tr><th>Vehicle</th><th>Product</th><th class="right">Gross</th><th class="right">Tare</th><th class="right">Net</th></tr></thead>
-      <tbody>${history.slice(0,8).map(x=>`<tr>
+      <thead><tr><th>Vehicle</th><th>Product</th><th class="right">Gross</th><th class="right">Tare</th><th class="right">Net</th><th></th></tr></thead>
+      <tbody>${history.slice(0,8).map((x,i)=>`<tr>
         <td>${esc(x.reg)}</td><td>${esc(x.product)}</td>
         <td class="right">${fmt(x.gross)}</td>
         <td class="right">${fmt(x.tare)}</td>
         <td class="right"><strong>${fmt(x.net)}</strong></td>
+        <td class="right"><button class="remove-weight" onclick="removeWeight(${i})">REMOVE</button></td>
       </tr>`).join("")}</tbody></table>`;
   }
 }
@@ -255,23 +250,33 @@ function loadDraft(){
   }catch(e){}
 }
 
-function applySavedVehicle(){
-  const reg=$("registration").value.trim().toUpperCase();
-  const v=vehicles.find(x=>x.reg.toUpperCase()===reg);
+function applySavedVehicle(regValue=null){
+  const reg=(regValue ?? $("registration").value).trim();
+  const v=vehicles.find(x=>x.reg.toUpperCase()===reg.toUpperCase());
+
   if(v){
+    $("registration").value=v.reg;
     firstWeight=Number(v.tare);
-    $("vehicleHint").textContent="Saved tare loaded: "+fmt(v.tare)+" kg";
-    saveDraft();
-    render();
+    $("vehicleHint").textContent="Tare: "+fmt(v.tare)+" kg";
   } else {
     $("vehicleHint").textContent="";
   }
+
+  saveDraft();
+  render();
 }
 
 window.removeVehicle=function(index){
   vehicles.splice(index,1);
   localStorage.setItem("oneill-vehicles",JSON.stringify(vehicles));
   render();
+};
+
+window.removeWeight=function(index){
+  history.splice(index,1);
+  localStorage.setItem("oneill-weighings",JSON.stringify(history));
+  render();
+  msg("Weighing removed.");
 };
 
 function handleWeightNotification(event){
@@ -386,6 +391,7 @@ $("capture").onclick=()=>{
 $("clear").onclick=()=>{
   firstWeight=null;
   $("registration").value="";
+  $("vehicleSelect").value="";
   $("party").value="";
   $("product").value="";
   $("vehicleHint").textContent="";
@@ -413,29 +419,30 @@ $("saveVehicle").onclick=()=>{
   msg("Vehicle tare saved.");
 };
 
+$("vehicleSelect").addEventListener("change",()=>{
+  const reg=$("vehicleSelect").value;
+  if(reg){
+    applySavedVehicle(reg);
+  } else {
+    $("registration").value="";
+    firstWeight=null;
+    $("vehicleHint").textContent="";
+    saveDraft();
+    render();
+    $("registration").focus();
+  }
+});
+
 $("registration").addEventListener("change",()=>{
-  applySavedVehicle();
-  saveDraft();
+  const reg=$("registration").value.trim();
+  const v=vehicles.find(x=>x.reg.toUpperCase()===reg.toUpperCase());
+  $("vehicleSelect").value=v ? v.reg : "";
+  if(v) applySavedVehicle(v.reg);
+  else saveDraft();
 });
 $("registration").addEventListener("input",saveDraft);
 $("party").addEventListener("input",saveDraft);
 $("product").addEventListener("input",saveDraft);
-
-// Demo controls remain useful when developing without the module.
-$("applyWeight").onclick=()=>{
-  const v=Number($("demoWeight").value);
-  if(Number.isFinite(v)){
-    liveWeight=v;
-    lastReadingAt=Date.now();
-    render();
-  }
-};
-
-$("toggleStable").onclick=()=>{
-  stable=!stable;
-  $("toggleStable").textContent=stable?"SET UNSTABLE":"SET STABLE";
-  render();
-};
 
 // A stale BLE reading must never remain capturable.
 // Firmware normally refreshes every 500 ms, so 3 seconds is generous.
@@ -448,8 +455,13 @@ setInterval(()=>{
 },500);
 
 loadDraft();
-applySavedVehicle();
 render();
+const initialReg=$("registration").value.trim();
+const initialVehicle=vehicles.find(v=>v.reg.toUpperCase()===initialReg.toUpperCase());
+if(initialVehicle){
+  $("vehicleSelect").value=initialVehicle.reg;
+  $("vehicleHint").textContent="Tare: "+fmt(initialVehicle.tare)+" kg";
+}
 </script>
 </body>
 </html>
