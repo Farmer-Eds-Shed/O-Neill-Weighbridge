@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>O'Neill Weighbridge</title>
+<style>
+:root{
+  --green:#16a34a; --green-dark:#15803d; --green-soft:#dcfce7;
+  --ink:#111827; --muted:#6b7280; --line:#d1d5db; --panel:#f9fafb;
+  --amber:#d97706; --amber-soft:#fef3c7; --red:#dc2626; --red-soft:#fee2e2;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f3f4f6;color:var(--ink)}
+.shell{max-width:820px;margin:28px auto;padding:0 14px}
+.card{background:white;border:1px solid var(--green);border-radius:10px;padding:16px;box-shadow:0 1px 3px #0001}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-weight:800;font-size:20px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 9px;font-size:12px;background:var(--green-soft);color:#166534}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.live{text-align:center;padding:16px 0 14px;border-bottom:1px solid #e5e7eb}
+.live small{display:block;color:#374151;font-size:12px;margin-bottom:6px}
+.weight{font-size:34px;font-weight:800;color:#059669}
+.status{margin-top:7px;display:flex;justify-content:center}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{margin-top:16px}
+label{font-weight:700;font-size:14px;display:block;margin-bottom:7px}
+input,select{width:100%;font:inherit;padding:13px 11px;border:1px solid var(--line);border-radius:7px;background:white}
+.weights{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.box{padding:12px;border-radius:7px;background:#e5e7eb}
+.box.net{background:#dcf2e4}
+.box small{display:block;margin-bottom:5px}
+.box strong{font-size:19px}
+.net strong{color:#059669}
+button{border:0;border-radius:6px;padding:14px 16px;font:inherit;font-weight:800;cursor:pointer}
+.primary{width:100%;margin-top:12px;background:var(--green);color:white}
+.primary:hover{background:var(--green-dark)}
+.primary:disabled{background:#9ca3af;cursor:not-allowed}
+.secondary{background:#e5e7eb;color:#111827}
+.actions{display:flex;gap:8px;margin-top:10px}
+.actions button{flex:1}
+.message{margin-top:10px;padding:10px;border-radius:6px;font-size:13px;display:none}
+.message.show{display:block}
+.message.ok{background:var(--green-soft);color:#166534}
+.message.warn{background:var(--amber-soft);color:#92400e}
+.section{margin-top:20px;border-top:1px solid #e5e7eb;padding-top:16px}
+.section h2{font-size:16px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #e5e7eb}
+th{color:#4b5563}
+.right{text-align:right}
+.empty{text-align:center;color:var(--muted);padding:16px}
+.dev{margin-top:16px;background:#f9fafb;border:1px dashed #d1d5db;border-radius:7px;padding:10px}
+.dev summary{cursor:pointer;font-size:13px;font-weight:700}
+.dev-controls{display:grid;grid-template-columns:1fr auto auto;gap:7px;margin-top:10px}
+.dev input{padding:9px}
+.dev button{padding:9px 12px}
+.footer{text-align:center;color:var(--muted);font-size:12px;margin-top:14px}
+@media(max-width:600px){
+  .grid,.weights{grid-template-columns:1fr}
+  .weight{font-size:30px}
+  .shell{margin:10px auto}
+  .card{padding:14px}
+  table{font-size:12px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="card">
+    <div class="top">
+      <div class="brand">O'Neill Weighbridge</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="pill" id="connection" style="background:#e5e7eb;color:#374151"><span class="dot"></span> Disconnected</span>
+        <button class="secondary" id="connectBle" style="padding:7px 11px">CONNECT</button>
+      </div>
+    </div>
+
+    <div class="live">
+      <small>LIVE WEIGHT</small>
+      <div class="weight"><span id="liveWeight">—</span> <span id="liveUnit">kg</span></div>
+      <div class="status"><span class="pill" id="stablePill" style="background:#e5e7eb;color:#374151"><span class="dot"></span> No reading</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="field">
+        <label for="registration">Vehicle / registration</label>
+        <input id="registration" list="vehicleList" placeholder="e.g. 231-MH-1234" autocomplete="off">
+        <datalist id="vehicleList"></datalist>
+        <div id="vehicleHint" style="font-size:12px;color:var(--muted);margin-top:5px"></div>
+      </div>
+      <div class="field">
+        <label for="party">Customer / Supplier</label>
+        <input id="party" placeholder="Optional">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="product">Load / Product <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input id="product" placeholder="e.g. Grain – Barley">
+    </div>
+
+    <div class="weights">
+      <div class="box">
+        <small>First / tare weight</small>
+        <strong><span id="tare">7,840</span> kg</strong>
+      </div>
+      <div class="box net">
+        <small>Net weight</small>
+        <strong><span id="net">10,580</span> kg</strong>
+      </div>
+    </div>
+
+    <button class="primary" id="capture">CAPTURE WEIGHT</button>
+
+    <div class="actions">
+      <button class="secondary" id="setFirst">SET LIVE AS FIRST WEIGHT</button>
+      <button class="secondary" id="clear">NEW LOAD</button>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <div class="section">
+      <div class="top">
+        <h2 style="margin:0">Saved tractors / vehicles</h2>
+        <button class="secondary" id="saveVehicle" style="padding:8px 11px">SAVE CURRENT TARE</button>
+      </div>
+      <div id="vehicles" style="margin-top:8px"></div>
+    </div>
+
+    <div class="section">
+      <h2>Recent weighings</h2>
+      <div id="history"></div>
+    </div>
+
+    <details class="dev">
+      <summary>Demo / test controls</summary>
+      <div class="dev-controls">
+        <input id="demoWeight" type="number" step="0.1" value="18420">
+        <button class="secondary" id="applyWeight">SET WEIGHT</button>
+        <button class="secondary" id="toggleStable">SET UNSTABLE</button>
+      </div>
+    </details>
+
+    <div class="footer">Prototype single-page app · data stored locally in this browser</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const ONEILL_SERVICE = "a5b10001-7c4d-4e8a-9f21-0e1a2b3c4d5e";
+const ONEILL_WEIGHT  = "a5b10002-7c4d-4e8a-9f21-0e1a2b3c4d5e";
+
+let bleDevice = null;
+let weightCharacteristic = null;
+let liveWeight = null;
+let firstWeight = 7840;
+let stable = false;
+let lastReadingAt = 0;
+let history = JSON.parse(localStorage.getItem("oneill-weighings") || "[]");
+let vehicles = JSON.parse(localStorage.getItem("oneill-vehicles") || "[]");
+
+const fmt = n => Number(n).toLocaleString("en-IE", {maximumFractionDigits:1});
+
+function esc(s){
+  return String(s||"").replace(/[&<>"']/g,c=>(
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
+  ));
+}
+
+function setConnection(text, connected=false){
+  const p=$("connection");
+  p.innerHTML='<span class="dot"></span> '+text;
+  p.style.background=connected?"var(--green-soft)":"#e5e7eb";
+  p.style.color=connected?"#166534":"#374151";
+  $("connectBle").textContent=connected?"CONNECTED":"CONNECT";
+}
+
+function render(){
+  $("liveWeight").textContent = liveWeight == null ? "—" : fmt(liveWeight);
+  $("tare").textContent = firstWeight == null ? "—" : fmt(firstWeight);
+  $("net").textContent =
+    liveWeight == null || firstWeight == null ? "—" : fmt(Math.abs(liveWeight-firstWeight));
+
+  const p=$("stablePill");
+  if(liveWeight == null){
+    p.innerHTML='<span class="dot"></span> No reading';
+    p.style.background="#e5e7eb";
+    p.style.color="#374151";
+  } else {
+    p.innerHTML='<span class="dot"></span> '+(stable?"Stable":"Unstable");
+    p.style.background=stable?"var(--green-soft)":"var(--amber-soft)";
+    p.style.color=stable?"#166534":"#92400e";
+  }
+
+  $("capture").disabled = !stable || liveWeight == null;
+
+  // Saved vehicle / tractor list
+  $("vehicleList").innerHTML = vehicles.map(v =>
+    `<option value="${esc(v.reg)}">${fmt(v.tare)} kg tare</option>`
+  ).join("");
+
+  if(!vehicles.length){
+    $("vehicles").innerHTML='<div class="empty">No saved vehicles yet.</div>';
+  } else {
+    $("vehicles").innerHTML=`<table>
+      <thead><tr><th>Vehicle</th><th class="right">Saved tare</th><th></th></tr></thead>
+      <tbody>${vehicles.map((v,i)=>`<tr>
+        <td>${esc(v.reg)}</td>
+        <td class="right">${fmt(v.tare)} kg</td>
+        <td class="right"><button class="secondary" style="padding:6px 9px" onclick="removeVehicle(${i})">REMOVE</button></td>
+      </tr>`).join("")}</tbody></table>`;
+  }
+
+  if(!history.length){
+    $("history").innerHTML='<div class="empty">No weighings captured yet.</div>';
+  } else {
+    $("history").innerHTML=`<table>
+      <thead><tr><th>Vehicle</th><th>Product</th><th class="right">Gross</th><th class="right">Tare</th><th class="right">Net</th></tr></thead>
+      <tbody>${history.slice(0,8).map(x=>`<tr>
+        <td>${esc(x.reg)}</td><td>${esc(x.product)}</td>
+        <td class="right">${fmt(x.gross)}</td>
+        <td class="right">${fmt(x.tare)}</td>
+        <td class="right"><strong>${fmt(x.net)}</strong></td>
+      </tr>`).join("")}</tbody></table>`;
+  }
+}
+
+function msg(text,type="ok"){
+  const m=$("message");
+  m.textContent=text;
+  m.className="message show "+type;
+  setTimeout(()=>m.className="message",3500);
+}
+
+
+function saveDraft(){
+  localStorage.setItem("oneill-draft", JSON.stringify({
+    registration:$("registration").value,
+    party:$("party").value,
+    product:$("product").value,
+    firstWeight:firstWeight
+  }));
+}
+
+function loadDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem("oneill-draft") || "{}");
+    $("registration").value=d.registration || "";
+    $("party").value=d.party || "";
+    $("product").value=d.product || "";
+    if(d.firstWeight !== undefined && d.firstWeight !== null)
+      firstWeight=Number(d.firstWeight);
+  }catch(e){}
+}
+
+function applySavedVehicle(){
+  const reg=$("registration").value.trim().toUpperCase();
+  const v=vehicles.find(x=>x.reg.toUpperCase()===reg);
+  if(v){
+    firstWeight=Number(v.tare);
+    $("vehicleHint").textContent="Saved tare loaded: "+fmt(v.tare)+" kg";
+    saveDraft();
+    render();
+  } else {
+    $("vehicleHint").textContent="";
+  }
+}
+
+window.removeVehicle=function(index){
+  vehicles.splice(index,1);
+  localStorage.setItem("oneill-vehicles",JSON.stringify(vehicles));
+  render();
+};
+
+function handleWeightNotification(event){
+  const value=event.target.value;
+  const text=new TextDecoder().decode(value).trim();
+
+  // Expected:
+  // US,GS,18420.0,kg
+  // ST,GS,18420.0,kg
+  const parts=text.split(",");
+  if(parts.length < 4) return;
+
+  const state=parts[0].trim();
+  const kind=parts[1].trim();
+  const weight=Number(parts[2].trim());
+  const unit=parts[3].trim().toLowerCase();
+
+  if((state!=="ST" && state!=="US") || kind!=="GS" || !Number.isFinite(weight))
+    return;
+
+  liveWeight=weight;
+  stable=(state==="ST");
+  lastReadingAt=Date.now();
+  $("liveUnit").textContent=unit || "kg";
+  render();
+}
+
+function onDisconnected(){
+  weightCharacteristic=null;
+  stable=false;
+  liveWeight=null;
+  setConnection("Disconnected",false);
+  render();
+  msg("Bluetooth disconnected.","warn");
+}
+
+async function connectBluetooth(){
+  if(!navigator.bluetooth){
+    msg("Web Bluetooth is not available in this browser. Use Chrome or Edge on a supported device.","warn");
+    return;
+  }
+
+  try{
+    setConnection("Connecting…",false);
+
+    bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[ONEILL_SERVICE]}],
+      optionalServices:[ONEILL_SERVICE]
+    });
+
+    bleDevice.addEventListener("gattserverdisconnected",onDisconnected);
+
+    const server=await bleDevice.gatt.connect();
+    const service=await server.getPrimaryService(ONEILL_SERVICE);
+    weightCharacteristic=await service.getCharacteristic(ONEILL_WEIGHT);
+
+    await weightCharacteristic.startNotifications();
+    weightCharacteristic.addEventListener(
+      "characteristicvaluechanged",
+      handleWeightNotification
+    );
+
+    setConnection("Connected · HPC Bluetooth",true);
+    msg("Connected to O'Neill weighbridge module.");
+  }catch(err){
+    console.error(err);
+    setConnection("Disconnected",false);
+
+    if(err.name!=="NotFoundError"){
+      msg("Bluetooth connection failed: "+err.message,"warn");
+    }
+  }
+}
+
+$("connectBle").onclick=connectBluetooth;
+
+$("setFirst").onclick=()=>{
+  if(liveWeight==null) return msg("No live weight available.","warn");
+  if(!stable) return msg("Wait for a stable weight before capturing.","warn");
+  firstWeight=liveWeight;
+  saveDraft();
+  render();
+  msg("First weight captured.");
+};
+
+$("capture").onclick=()=>{
+  if(liveWeight==null) return msg("No live weight available.","warn");
+  if(!stable) return msg("Weight is unstable.","warn");
+  if(firstWeight==null) return msg("Capture the first weight before completing the load.","warn");
+
+  const reg=$("registration").value.trim();
+  if(!reg) return msg("Enter a vehicle registration.","warn");
+
+  const gross=Math.max(liveWeight,firstWeight);
+  const tare=Math.min(liveWeight,firstWeight);
+
+  history.unshift({
+    date:new Date().toISOString(),
+    reg,
+    party:$("party").value.trim(),
+    product:$("product").value.trim(),
+    gross,
+    tare,
+    net:gross-tare
+  });
+
+  localStorage.setItem("oneill-weighings",JSON.stringify(history));
+  render();
+  msg("Weighing saved locally.");
+};
+
+$("clear").onclick=()=>{
+  firstWeight=null;
+  $("registration").value="";
+  $("party").value="";
+  $("product").value="";
+  $("vehicleHint").textContent="";
+  localStorage.removeItem("oneill-draft");
+  render();
+  msg("Ready for a new load.");
+};
+
+
+$("saveVehicle").onclick=()=>{
+  const reg=$("registration").value.trim();
+  if(!reg) return msg("Enter a vehicle registration first.","warn");
+  if(firstWeight==null) return msg("Capture or load a tare weight first.","warn");
+
+  const existing=vehicles.find(v=>v.reg.toUpperCase()===reg.toUpperCase());
+  if(existing){
+    existing.reg=reg;
+    existing.tare=Number(firstWeight);
+  } else {
+    vehicles.push({reg:reg,tare:Number(firstWeight)});
+  }
+  vehicles.sort((a,b)=>a.reg.localeCompare(b.reg));
+  localStorage.setItem("oneill-vehicles",JSON.stringify(vehicles));
+  render();
+  msg("Vehicle tare saved.");
+};
+
+$("registration").addEventListener("change",()=>{
+  applySavedVehicle();
+  saveDraft();
+});
+$("registration").addEventListener("input",saveDraft);
+$("party").addEventListener("input",saveDraft);
+$("product").addEventListener("input",saveDraft);
+
+// Demo controls remain useful when developing without the module.
+$("applyWeight").onclick=()=>{
+  const v=Number($("demoWeight").value);
+  if(Number.isFinite(v)){
+    liveWeight=v;
+    lastReadingAt=Date.now();
+    render();
+  }
+};
+
+$("toggleStable").onclick=()=>{
+  stable=!stable;
+  $("toggleStable").textContent=stable?"SET UNSTABLE":"SET STABLE";
+  render();
+};
+
+// A stale BLE reading must never remain capturable.
+// Firmware normally refreshes every 500 ms, so 3 seconds is generous.
+setInterval(()=>{
+  if(liveWeight!==null && lastReadingAt && Date.now()-lastReadingAt>3000){
+    liveWeight=null;
+    stable=false;
+    render();
+  }
+},500);
+
+loadDraft();
+applySavedVehicle();
+render();
+</script>
+</body>
+</html>
